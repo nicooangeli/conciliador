@@ -1150,7 +1150,7 @@ Reglas:
       'anthropic-dangerous-direct-browser-calls': 'true'
     },
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 8000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userContent }]
@@ -1159,12 +1159,16 @@ Reglas:
 
   if (!resp.ok) {
     const e = await resp.json().catch(() => ({}));
-    throw new Error(e.error?.message || 'Error API ' + resp.status);
+    let msg = e.error?.message || ('Error API ' + resp.status);
+    if (resp.status === 401) msg = 'API key inválida. Revisá que empiece con sk-ant-';
+    if (resp.status === 403) msg = 'Sin permisos o sin crédito en console.anthropic.com';
+    if (resp.status === 429) msg = 'Límite alcanzado. Esperá unos segundos y volvé a intentar.';
+    if (resp.status === 400) msg = 'Error 400: ' + (e.error?.message || 'archivo no procesable');
+    throw new Error(msg);
   }
 
   const data = await resp.json();
   const raw = data.content?.map(b => b.text || '').join('').trim();
-  // Strip any accidental markdown fences
   return raw.replace(/```[\w]*\n?/g, '').trim();
 }
 
