@@ -1,0 +1,1600 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Conciliador de Proveedores — Ferretera Central</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<style>
+:root {
+  --bg: #0f1117;
+  --surface: #181c27;
+  --surface2: #1e2333;
+  --surface3: #252b3d;
+  --border: #2a3048;
+  --border2: #364060;
+  --text: #e8ecf5;
+  --text2: #8892aa;
+  --text3: #505a72;
+  --accent: #4f8ef7;
+  --accent2: #3a6fd8;
+  --accent-glow: rgba(79,142,247,0.15);
+  --green: #36d399;
+  --green-bg: rgba(54,211,153,0.1);
+  --red: #f87171;
+  --red-bg: rgba(248,113,113,0.1);
+  --yellow: #fbbf24;
+  --yellow-bg: rgba(251,191,36,0.1);
+  --purple: #a78bfa;
+  --purple-bg: rgba(167,139,250,0.1);
+  --mono: 'IBM Plex Mono', monospace;
+  --sans: 'IBM Plex Sans', sans-serif;
+  --r: 8px;
+  --r-sm: 5px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--sans);
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* ── Scanline texture ── */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.03) 2px, rgba(0,0,0,0.03) 4px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* ── Layout ── */
+.app { display: grid; grid-template-columns: 280px 1fr; min-height: 100vh; position: relative; z-index: 1; }
+
+/* ── Sidebar ── */
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.sidebar-logo {
+  padding: 20px 20px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.sidebar-logo .brand {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 2px;
+}
+.sidebar-logo .title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.3;
+}
+.sidebar-logo .subtitle {
+  font-size: 11px;
+  color: var(--text3);
+  margin-top: 2px;
+  font-family: var(--mono);
+}
+
+.sidebar-section { padding: 16px 20px 8px; }
+.sidebar-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text3);
+  margin-bottom: 10px;
+}
+
+/* ── API key pill ── */
+.api-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: border-color 0.15s;
+  margin-bottom: 4px;
+}
+.api-row:hover { border-color: var(--border2); }
+.api-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--red); flex-shrink: 0; }
+.api-dot.on { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.api-text { font-size: 12px; color: var(--text2); flex: 1; }
+.api-edit { font-size: 10px; color: var(--text3); font-family: var(--mono); }
+
+/* ── Steps ── */
+.steps { display: flex; flex-direction: column; gap: 4px; padding: 0 20px; }
+.step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--r-sm);
+  cursor: default;
+  opacity: 0.45;
+  transition: opacity 0.2s;
+}
+.step.active { opacity: 1; }
+.step.done { opacity: 0.7; }
+.step-num {
+  width: 20px; height: 20px;
+  border-radius: 50%;
+  background: var(--surface3);
+  border: 1px solid var(--border2);
+  font-size: 10px;
+  font-family: var(--mono);
+  font-weight: 600;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  color: var(--text3);
+}
+.step.active .step-num { background: var(--accent); border-color: var(--accent); color: #fff; }
+.step.done .step-num { background: var(--green-bg); border-color: var(--green); color: var(--green); }
+.step-label { font-size: 12px; color: var(--text2); }
+.step.active .step-label { color: var(--text); font-weight: 500; }
+
+.sidebar-spacer { flex: 1; }
+
+.sidebar-footer {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text3);
+  font-family: var(--mono);
+}
+
+/* ── Main ── */
+.main {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* ── Top bar ── */
+.topbar {
+  padding: 14px 28px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+.topbar-title { font-size: 14px; font-weight: 600; flex: 1; }
+.topbar-sub { font-size: 12px; color: var(--text3); font-family: var(--mono); }
+
+/* ── Content area ── */
+.content { flex: 1; padding: 24px 28px; display: flex; flex-direction: column; gap: 20px; }
+
+/* ── Cards ── */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+}
+.card-header {
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.card-header h3 { font-size: 13px; font-weight: 600; flex: 1; }
+.card-header .tag {
+  font-size: 10px;
+  font-family: var(--mono);
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid;
+}
+.tag-magnus { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+.tag-prov { border-color: var(--purple); color: var(--purple); background: var(--purple-bg); }
+.tag-ok { border-color: var(--green); color: var(--green); background: var(--green-bg); }
+.tag-warn { border-color: var(--yellow); color: var(--yellow); background: var(--yellow-bg); }
+.tag-err { border-color: var(--red); color: var(--red); background: var(--red-bg); }
+.card-body { padding: 18px; }
+
+/* ── Upload zones ── */
+.upload-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.drop-zone {
+  border: 1.5px dashed var(--border2);
+  border-radius: var(--r);
+  padding: 24px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  position: relative;
+  background: var(--surface2);
+}
+.drop-zone:hover, .drop-zone.over {
+  border-color: var(--accent);
+  background: var(--accent-glow);
+}
+.drop-zone.loaded {
+  border-color: var(--green);
+  border-style: solid;
+  background: var(--green-bg);
+}
+.drop-zone input[type=file] {
+  position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+}
+.dz-icon { font-size: 28px; margin-bottom: 8px; display: block; }
+.dz-title { font-size: 13px; font-weight: 500; margin-bottom: 4px; }
+.dz-sub { font-size: 11px; color: var(--text3); font-family: var(--mono); }
+.dz-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 4px 10px;
+  background: var(--green-bg);
+  border: 1px solid var(--green);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--green);
+  font-family: var(--mono);
+}
+.dz-badge button {
+  background: none; border: none; color: var(--green); cursor: pointer;
+  font-size: 12px; padding: 0; line-height: 1; opacity: 0.6;
+}
+.dz-badge button:hover { opacity: 1; color: var(--red); }
+
+/* ── Chat / AI extraction ── */
+.chat-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.chat-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 340px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+
+.msg {
+  display: flex;
+  gap: 10px;
+  animation: fadeUp 0.25s ease;
+}
+@keyframes fadeUp { from { opacity:0; transform: translateY(6px); } to { opacity:1; transform: none; } }
+
+.msg-avatar {
+  width: 28px; height: 28px;
+  border-radius: 6px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.msg-avatar.sys { background: var(--accent-glow); border: 1px solid var(--accent); }
+.msg-avatar.user { background: var(--purple-bg); border: 1px solid var(--purple); }
+.msg-bubble {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 10px 14px;
+  font-size: 13px;
+  line-height: 1.6;
+  max-width: 600px;
+  flex: 1;
+}
+.msg-bubble.sys { border-color: var(--border2); }
+.msg-bubble.user { background: var(--accent-glow); border-color: var(--accent); }
+.msg-bubble.success { background: var(--green-bg); border-color: var(--green); color: var(--green); }
+.msg-bubble.error { background: var(--red-bg); border-color: var(--red); color: var(--red); }
+
+.msg-bubble pre {
+  font-family: var(--mono);
+  font-size: 11px;
+  background: var(--surface3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 8px 10px;
+  overflow-x: auto;
+  margin-top: 8px;
+  color: var(--text2);
+}
+
+/* ── Chat input bar ── */
+.chat-input-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-end;
+}
+.chat-input-wrap {
+  flex: 1;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+  border-radius: var(--r);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  transition: border-color 0.15s;
+}
+.chat-input-wrap:focus-within { border-color: var(--accent); }
+.chat-input-wrap textarea {
+  flex: 1;
+  background: none;
+  border: none;
+  outline: none;
+  font-family: var(--sans);
+  font-size: 13px;
+  color: var(--text);
+  resize: none;
+  min-height: 20px;
+  max-height: 100px;
+  line-height: 1.5;
+}
+.chat-input-wrap textarea::placeholder { color: var(--text3); }
+
+.attach-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border2);
+  background: var(--surface3);
+  cursor: pointer;
+  color: var(--text3);
+  font-size: 14px;
+  transition: all 0.15s;
+  flex-shrink: 0;
+  position: relative;
+}
+.attach-btn:hover { border-color: var(--accent); color: var(--accent); }
+.attach-btn input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+.send-btn {
+  padding: 9px 18px;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--r);
+  color: #fff;
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+  white-space: nowrap;
+}
+.send-btn:hover { background: var(--accent2); }
+.send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.attached-file {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 8px;
+  background: var(--purple-bg);
+  border: 1px solid var(--purple);
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--purple);
+  font-family: var(--mono);
+  margin-top: 6px;
+}
+.attached-file button { background: none; border: none; color: var(--purple); cursor: pointer; font-size: 12px; padding: 0; opacity: 0.6; }
+.attached-file button:hover { opacity: 1; color: var(--red); }
+
+/* ── Results ── */
+.results-hidden { display: none; }
+
+.summary-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.sum-tile {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 12px 14px;
+  text-align: center;
+}
+.sum-tile .num {
+  font-family: var(--mono);
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.sum-tile .lbl { font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text3); }
+.sum-tile.ok { border-color: var(--green); } .sum-tile.ok .num { color: var(--green); }
+.sum-tile.warn { border-color: var(--yellow); } .sum-tile.warn .num { color: var(--yellow); }
+.sum-tile.err { border-color: var(--red); } .sum-tile.err .num { color: var(--red); }
+.sum-tile.info { border-color: var(--accent); } .sum-tile.info .num { color: var(--accent); }
+.sum-tile.purple { border-color: var(--purple); } .sum-tile.purple .num { color: var(--purple); }
+
+/* ── Table ── */
+.tbl-toolbar {
+  display: flex;
+  gap: 6px;
+  padding: 12px 18px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+  align-items: center;
+}
+.tab-pill {
+  padding: 4px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+  border: 1px solid var(--border2);
+  color: var(--text3);
+  background: none;
+  transition: all 0.12s;
+  font-family: var(--sans);
+}
+.tab-pill:hover { color: var(--text); border-color: var(--border2); }
+.tab-pill.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+.tbl-search {
+  margin-left: auto;
+  padding: 5px 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--text);
+  font-size: 12px;
+  font-family: var(--mono);
+  outline: none;
+  width: 180px;
+}
+.tbl-search:focus { border-color: var(--accent); }
+
+.tbl-wrap { overflow-x: auto; }
+table.rtbl {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+table.rtbl th {
+  padding: 8px 14px;
+  text-align: left;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text3);
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+  white-space: nowrap;
+  font-family: var(--mono);
+}
+table.rtbl td {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+  white-space: nowrap;
+}
+table.rtbl tr:last-child td { border-bottom: none; }
+table.rtbl tr:hover td { background: var(--surface2); }
+
+.row-ok td { }
+.row-diff td { background: rgba(251,191,36,0.04); }
+.row-onlyp td { background: rgba(79,142,247,0.05); }
+.row-onlyc td { background: rgba(248,113,113,0.05); }
+.row-partial td { background: rgba(167,139,250,0.05); }
+
+.pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: var(--mono);
+  border: 1px solid;
+  white-space: nowrap;
+}
+.pill-ok { color: var(--green); border-color: var(--green); background: var(--green-bg); }
+.pill-warn { color: var(--yellow); border-color: var(--yellow); background: var(--yellow-bg); }
+.pill-err { color: var(--red); border-color: var(--red); background: var(--red-bg); }
+.pill-info { color: var(--accent); border-color: var(--accent); background: var(--accent-glow); }
+.pill-purple { color: var(--purple); border-color: var(--purple); background: var(--purple-bg); }
+
+.mono { font-family: var(--mono); }
+.num-cell { font-family: var(--mono); text-align: right; }
+.diff-neg { color: var(--red); }
+.diff-pos { color: var(--yellow); }
+
+/* ── Export bar ── */
+.export-bar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 12px 18px;
+  border-top: 1px solid var(--border);
+  background: var(--surface2);
+}
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 7px 16px;
+  border-radius: var(--r-sm);
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid var(--border2);
+  background: var(--surface3);
+  color: var(--text);
+  transition: all 0.15s;
+}
+.btn:hover { border-color: var(--border2); background: var(--surface2); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { background: var(--accent2); }
+.btn.danger { color: var(--red); border-color: var(--red); background: var(--red-bg); }
+
+/* ── Modal ── */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.65); z-index: 999; align-items: center; justify-content: center; }
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: var(--r);
+  padding: 24px;
+  width: 420px;
+  max-width: 94vw;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+}
+.modal h2 { font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+.modal p { font-size: 12px; color: var(--text2); margin-bottom: 16px; line-height: 1.6; }
+.modal input {
+  width: 100%; padding: 9px 12px;
+  background: var(--surface2); border: 1px solid var(--border2);
+  border-radius: var(--r-sm); color: var(--text);
+  font-family: var(--mono); font-size: 12px;
+  outline: none; margin-bottom: 14px;
+}
+.modal input:focus { border-color: var(--accent); }
+.modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* ── Spinner ── */
+.spin {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid var(--border2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.hidden { display: none !important; }
+.fade { animation: fadeUp 0.3s ease; }
+
+/* ── Progress bar ── */
+.progress-bar-wrap {
+  height: 3px;
+  background: var(--surface3);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, var(--accent), var(--purple));
+  border-radius: 999px;
+  transition: width 0.4s ease;
+  width: 0%;
+}
+
+@media (max-width: 800px) {
+  .app { grid-template-columns: 1fr; }
+  .sidebar { display: none; }
+  .upload-grid { grid-template-columns: 1fr; }
+  .summary-row { grid-template-columns: repeat(3,1fr); }
+}
+</style>
+</head>
+<body>
+
+<!-- API Key Modal -->
+<div class="modal-overlay" id="api-modal">
+  <div class="modal">
+    <h2>🔑 API Key de Anthropic</h2>
+    <p>Necesaria para que Claude lea e interprete el archivo del proveedor. Nunca se almacena en servidores — solo en tu navegador.</p>
+    <input type="password" id="api-key-input" placeholder="sk-ant-api03-..." />
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Cancelar</button>
+      <button class="btn primary" onclick="saveKey()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<div class="app">
+
+  <!-- ── Sidebar ── -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <div class="brand">Ferretera Central JT</div>
+      <div class="title">Conciliador de<br>Proveedores</div>
+      <div class="subtitle">v4 · motor IA</div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">Configuración</div>
+      <div class="api-row" onclick="openModal()">
+        <div class="api-dot" id="api-dot"></div>
+        <span class="api-text" id="api-text">Configurar API key</span>
+        <span class="api-edit">editar</span>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">Flujo de trabajo</div>
+      <div class="steps" id="steps">
+        <div class="step active" id="step-1">
+          <div class="step-num">1</div>
+          <div class="step-label">Subir archivos</div>
+        </div>
+        <div class="step" id="step-2">
+          <div class="step-num">2</div>
+          <div class="step-label">Claude interpreta proveedor</div>
+        </div>
+        <div class="step" id="step-3">
+          <div class="step-num">3</div>
+          <div class="step-label">Ver resultados</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sidebar-spacer"></div>
+
+    <div class="sidebar-footer">
+      Costo estimado por conciliación:<br>
+      <span style="color:var(--green)">~ $0.02 USD</span>
+    </div>
+  </aside>
+
+  <!-- ── Main ── -->
+  <main class="main">
+
+    <div class="topbar">
+      <div>
+        <div class="topbar-title">Conciliación de Cuenta Corriente</div>
+        <div class="topbar-sub" id="topbar-sub">Subí los dos archivos para comenzar</div>
+      </div>
+      <button class="btn danger hidden" id="btn-reset" onclick="resetAll()">↺ Nueva conciliación</button>
+    </div>
+
+    <div class="content">
+
+      <!-- ── PASO 1: Archivos ── -->
+      <div class="card" id="card-upload">
+        <div class="card-header">
+          <h3>Paso 1 — Cargar archivos</h3>
+        </div>
+        <div class="card-body">
+          <div class="upload-grid">
+
+            <!-- Magnus -->
+            <div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+                <span class="tag tag-magnus">MAGNUS</span>
+                <span style="font-size:12px;color:var(--text2)">Tu exportación (Excel)</span>
+              </div>
+              <div class="drop-zone" id="dz1"
+                   ondragover="dzOver(event,'dz1')" ondragleave="dzLeave('dz1')" ondrop="dzDrop(event,1)">
+                <input type="file" accept=".xlsx,.xls" onchange="fileChosen(this,1)">
+                <span class="dz-icon">📊</span>
+                <div class="dz-title">Resumen de cuenta</div>
+                <div class="dz-sub">Excel exportado desde Magnus</div>
+              </div>
+              <div id="badge1" class="hidden"></div>
+            </div>
+
+            <!-- Proveedor -->
+            <div>
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+                <span class="tag tag-prov">PROVEEDOR</span>
+                <span style="font-size:12px;color:var(--text2)">Cualquier formato</span>
+              </div>
+              <div class="drop-zone" id="dz2"
+                   ondragover="dzOver(event,'dz2')" ondragleave="dzLeave('dz2')" ondrop="dzDrop(event,2)">
+                <input type="file" accept=".pdf,.xlsx,.xls,.csv,.txt" onchange="fileChosen(this,2)">
+                <span class="dz-icon">📄</span>
+                <div class="dz-title">Extracto del proveedor</div>
+                <div class="dz-sub">PDF · Excel · CSV · lo que sea</div>
+              </div>
+              <div id="badge2" class="hidden"></div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ── PASO 2: Chat / extracción IA ── -->
+      <div class="card" id="card-chat">
+        <div class="card-header">
+          <h3>Paso 2 — Claude interpreta el archivo del proveedor</h3>
+          <span class="tag tag-prov" id="prov-name-tag" style="display:none"></span>
+        </div>
+        <div class="card-body">
+          <div class="chat-wrap">
+            <div class="chat-messages" id="chat-messages">
+              <div class="msg">
+                <div class="msg-avatar sys">🤖</div>
+                <div class="msg-bubble sys">
+                  Hola. Subí el <strong>Excel de Magnus</strong> y el <strong>archivo del proveedor</strong>, y yo me encargo de interpretar el formato — sin importar cómo venga.
+                  <br><br>
+                  Podés también escribirme si necesitás ajustar algo, por ejemplo: <em>"ignorá las líneas anteriores a enero 2025"</em> o <em>"el importe está en la columna Haber"</em>.
+                </div>
+              </div>
+            </div>
+
+            <!-- Attached file preview -->
+            <div id="chat-attach-preview" class="hidden"></div>
+
+            <!-- Input -->
+            <div class="chat-input-row">
+              <div class="chat-input-wrap">
+                <textarea id="chat-input" placeholder="Instrucciones adicionales o consultame algo..." rows="1"
+                          onkeydown="chatKeyDown(event)" oninput="autoResize(this)"></textarea>
+                <div class="attach-btn" title="Adjuntar archivo del proveedor">
+                  📎
+                  <input type="file" accept=".pdf,.xlsx,.xls,.csv,.txt" onchange="chatAttach(this)" id="chat-file-input">
+                </div>
+              </div>
+              <button class="send-btn" id="send-btn" onclick="sendChat()" disabled>Extraer →</button>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+      <!-- ── PASO 3: Resultados ── -->
+      <div id="results-section" class="results-hidden">
+
+        <div class="summary-row fade" id="summary-row"></div>
+
+        <div class="card fade">
+          <div class="card-header">
+            <h3>Detalle de conciliación</h3>
+            <span id="period-tag" class="tag tag-magnus" style="display:none;font-size:10px"></span>
+          </div>
+
+          <div class="tbl-toolbar">
+            <button class="tab-pill active" onclick="setTab('all',this)">Todos <span id="cnt-all"></span></button>
+            <button class="tab-pill" onclick="setTab('diff',this)">⚠ Diferencias <span id="cnt-diff"></span></button>
+            <button class="tab-pill" onclick="setTab('partial',this)">⏳ Pagos parciales <span id="cnt-partial"></span></button>
+            <button class="tab-pill" onclick="setTab('ok',this)">✓ Coincidentes <span id="cnt-ok"></span></button>
+            <button class="tab-pill" onclick="setTab('only',this)">Solo en uno <span id="cnt-only"></span></button>
+            <input class="tbl-search" type="text" id="tbl-search" placeholder="Buscar comprobante..." oninput="renderTable()">
+          </div>
+
+          <div class="tbl-wrap">
+            <table class="rtbl">
+              <thead><tr id="tbl-head"></tr></thead>
+              <tbody id="tbl-body"></tbody>
+            </table>
+          </div>
+
+          <div class="export-bar">
+            <button class="btn primary" onclick="exportExcel()">⬇ Exportar Excel</button>
+            <span style="font-size:12px;color:var(--text3);font-family:var(--mono)" id="export-info"></span>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<script>
+// ── PDF.js ───────────────────────────────────────────────────
+if (typeof pdfjsLib !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+}
+
+// ══════════════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════════════
+let magnusData   = [];   // parsed rows from Magnus XLS
+let provRawText  = '';   // raw text extracted from provider file
+let provFileName = '';
+let provFileB64  = '';   // base64 for PDFs (vision)
+let provFileType = '';   // 'pdf' | 'excel' | 'csv'
+let provData     = [];   // structured rows after Claude extraction
+let allRows      = [];   // conciliation result rows
+let currentTab   = 'all';
+let chatAttachedFile = null;
+let chatAttachedB64  = '';
+let chatAttachedType = '';
+
+// ══════════════════════════════════════════════════════════════
+//  API KEY
+// ══════════════════════════════════════════════════════════════
+function getKey() { return localStorage.getItem('fc_api_key') || ''; }
+function openModal() { document.getElementById('api-modal').classList.add('open'); document.getElementById('api-key-input').value = getKey(); }
+function closeModal() { document.getElementById('api-modal').classList.remove('open'); }
+function saveKey() {
+  const k = document.getElementById('api-key-input').value.trim();
+  if (k) { localStorage.setItem('fc_api_key', k); updateApiDot(); closeModal(); }
+}
+function updateApiDot() {
+  const has = !!getKey();
+  document.getElementById('api-dot').className = 'api-dot' + (has ? ' on' : '');
+  document.getElementById('api-text').textContent = has ? 'API key configurada' : 'Configurar API key';
+  document.getElementById('send-btn').disabled = !has;
+}
+updateApiDot();
+
+// ══════════════════════════════════════════════════════════════
+//  DROP ZONES
+// ══════════════════════════════════════════════════════════════
+function dzOver(e, id) { e.preventDefault(); document.getElementById(id).classList.add('over'); }
+function dzLeave(id) { document.getElementById(id).classList.remove('over'); }
+function dzDrop(e, n) { e.preventDefault(); dzLeave('dz' + n); const f = e.dataTransfer.files[0]; if (f) processFile(f, n); }
+function fileChosen(inp, n) { if (inp.files[0]) processFile(inp.files[0], n); }
+
+async function processFile(file, slot) {
+  const ext = file.name.split('.').pop().toLowerCase();
+  try {
+    if (slot === 1) {
+      // Magnus — always Excel
+      addMsg('sys', `📊 Leyendo <strong>${file.name}</strong>...`);
+      magnusData = await readMagnusExcel(file);
+      showBadge(1, file.name, '📊');
+      addMsg('sys', `✓ Magnus cargado — <strong>${magnusData.length} movimientos</strong> detectados.`);
+      setStep(1, 'done');
+      checkReady();
+    } else {
+      // Provider — remember for chat
+      provFileName = file.name;
+      provFileType = ext === 'pdf' ? 'pdf' : (ext === 'xlsx' || ext === 'xls') ? 'excel' : 'csv';
+      showBadge(2, file.name, provFileType === 'pdf' ? '📄' : '📊');
+      addMsg('sys', `📎 <strong>${file.name}</strong> adjuntado. Hacé clic en <strong>Extraer →</strong> para que Claude lo interprete.`);
+
+      if (provFileType === 'pdf') {
+        const ab = await file.arrayBuffer();
+        provFileB64  = bufToB64(ab);
+        provRawText  = await extractPdfText(ab);
+      } else if (provFileType === 'excel') {
+        provRawText = await readExcelAsText(file);
+      } else {
+        provRawText = await file.text();
+      }
+
+      checkReady();
+    }
+  } catch(err) {
+    addMsg('sys', `❌ Error leyendo <strong>${file.name}</strong>: ${err.message}`, 'error');
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+//  READ MAGNUS XLS — fixed structure: header at row 4 (index 4)
+// ══════════════════════════════════════════════════════════════
+async function readMagnusExcel(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = e => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'array', cellDates: true });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
+
+        // Find the header row — look for "Fec. Mov." or "Cód.Comprobante"
+        let hdrIdx = -1;
+        for (let i = 0; i < Math.min(raw.length, 15); i++) {
+          const joined = raw[i].join(' ').toLowerCase();
+          if (joined.includes('fec') && (joined.includes('comp') || joined.includes('débito') || joined.includes('debito'))) {
+            hdrIdx = i; break;
+          }
+        }
+        if (hdrIdx === -1) { rej(new Error('No se encontró la cabecera en el Excel de Magnus. Verificá que sea el Resumen de Cuenta.')); return; }
+
+        const headers = raw[hdrIdx].map(h => String(h).trim());
+        const rows = [];
+
+        for (let i = hdrIdx + 1; i < raw.length; i++) {
+          const rowArr = raw[i];
+          // Skip empty rows
+          const vals = rowArr.map(v => String(v || '').trim()).filter(Boolean);
+          if (vals.length < 3) continue;
+
+          const obj = {};
+          headers.forEach((h, j) => { obj[h] = String(rowArr[j] || '').trim(); });
+
+          // Must have a valid date in Fec. Mov.
+          const fechaKey = headers.find(h => /fec.*mov|fecmov/i.test(h.replace(/\s/g,''))) || headers.find(h => /fec/i.test(h));
+          if (!fechaKey || !obj[fechaKey]) continue;
+
+          rows.push(obj);
+        }
+
+        res(rows);
+      } catch(err) { rej(err); }
+    };
+    r.onerror = () => rej(new Error('Error leyendo el archivo'));
+    r.readAsArrayBuffer(file);
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+//  READ EXCEL AS TEXT (for provider)
+// ══════════════════════════════════════════════════════════════
+async function readExcelAsText(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = e => {
+      try {
+        const wb = XLSX.read(e.target.result, { type: 'array', raw: false });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        res(XLSX.utils.sheet_to_csv(ws));
+      } catch(err) { rej(err); }
+    };
+    r.onerror = () => rej(new Error('Error leyendo Excel'));
+    r.readAsArrayBuffer(file);
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+//  EXTRACT PDF TEXT
+// ══════════════════════════════════════════════════════════════
+async function extractPdfText(arrayBuffer) {
+  if (typeof pdfjsLib === 'undefined') return '';
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+  let text = '';
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const viewport = page.getViewport({ scale: 1 });
+    // Group by line (Y position)
+    const lines = {};
+    content.items.forEach(item => {
+      if (!item.str.trim()) return;
+      const y = Math.round(viewport.height - item.transform[5]);
+      const key = `${i}_${Math.round(y/3)*3}`;
+      if (!lines[key]) lines[key] = { y, parts: [] };
+      lines[key].parts.push({ x: Math.round(item.transform[4]), text: item.str.trim() });
+    });
+    const sorted = Object.values(lines).sort((a,b) => a.y - b.y);
+    sorted.forEach(l => {
+      text += l.parts.sort((a,b) => a.x - b.x).map(p => p.text).join('\t') + '\n';
+    });
+    text += '\n--- PÁGINA ' + (i+1) + ' ---\n';
+  }
+  return text;
+}
+
+// ══════════════════════════════════════════════════════════════
+//  BASE64
+// ══════════════════════════════════════════════════════════════
+function bufToB64(buf) {
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  const chunk = 8192;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+// ══════════════════════════════════════════════════════════════
+//  CHAT
+// ══════════════════════════════════════════════════════════════
+function chatKeyDown(e) {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+}
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 100) + 'px';
+}
+
+function chatAttach(inp) {
+  if (!inp.files[0]) return;
+  chatAttachedFile = inp.files[0];
+  const ext = chatAttachedFile.name.split('.').pop().toLowerCase();
+
+  const preview = document.getElementById('chat-attach-preview');
+  preview.classList.remove('hidden');
+  preview.innerHTML = `<span class="attached-file">📎 ${chatAttachedFile.name} <button onclick="clearChatAttach()">✕</button></span>`;
+
+  // Process the file
+  processFile(chatAttachedFile, 2);
+}
+function clearChatAttach() {
+  chatAttachedFile = null;
+  document.getElementById('chat-attach-preview').classList.add('hidden');
+  document.getElementById('chat-attach-preview').innerHTML = '';
+  document.getElementById('chat-file-input').value = '';
+}
+
+async function sendChat() {
+  const key = getKey();
+  if (!key) { openModal(); return; }
+  if (!provRawText && !provFileB64) {
+    addMsg('sys', '⚠️ Primero subí el archivo del proveedor (podés arrastrarlo arriba o usar el clip 📎).', 'error');
+    return;
+  }
+
+  const userMsg = document.getElementById('chat-input').value.trim();
+  if (userMsg) addMsg('user', userMsg);
+  document.getElementById('chat-input').value = '';
+  autoResize(document.getElementById('chat-input'));
+
+  const btn = document.getElementById('send-btn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spin"></span> Procesando...';
+
+  setStep(2, 'active');
+  const thinkingId = addMsg('sys', '<span class="spin"></span> Claude está leyendo el archivo del proveedor...', 'sys', true);
+
+  try {
+    const csvResult = await extractWithClaude(userMsg, key);
+    removeMsg(thinkingId);
+
+    provData = parseCSVStrict(csvResult);
+
+    if (provData.length === 0) {
+      addMsg('sys', '❌ No pude extraer movimientos del archivo. ¿Podés describirme cómo está organizado?', 'error');
+    } else {
+      addMsg('sys', `✓ Extraídos <strong>${provData.length} movimientos</strong> del archivo del proveedor. Iniciando conciliación...`, 'success');
+      setStep(2, 'done');
+      await sleep(400);
+      conciliar();
+    }
+  } catch(err) {
+    removeMsg(thinkingId);
+    addMsg('sys', `❌ Error: ${err.message}`, 'error');
+  }
+
+  btn.disabled = false;
+  btn.innerHTML = 'Extraer →';
+  clearChatAttach();
+}
+
+// ══════════════════════════════════════════════════════════════
+//  CLAUDE EXTRACTION
+// ══════════════════════════════════════════════════════════════
+async function extractWithClaude(userHint, key) {
+
+  // Build the Magnus context summary (first 5 rows as example)
+  const magnusSample = magnusData.slice(0,5).map(r => {
+    const keys = Object.keys(r);
+    return keys.map(k => `${k}: ${r[k]}`).join(' | ');
+  }).join('\n');
+
+  const magnusHeaders = magnusData.length > 0 ? Object.keys(magnusData[0]).join(', ') : '';
+
+  const systemPrompt = `Sos un experto en contabilidad argentina. Tu tarea es extraer movimientos de cuenta corriente de proveedores y devolverlos como CSV estructurado.
+
+El sistema de gestión del comprador usa estas columnas en Magnus:
+${magnusHeaders}
+
+Ejemplo de los datos del comprador:
+${magnusSample}
+
+La clave de macheo es el número de comprobante (Nº Comprobante en Magnus, ej: A-0011-00023164).
+Los tipos de comprobante son: FAC. PROVE (factura), N/C PROVE (nota crédito), PAGO PROV (pago).
+
+Devolvé ÚNICAMENTE un CSV con estas columnas exactas, sin markdown, sin explicaciones:
+Fecha,TipoComp,NroComprobante,Debito,Credito,Saldo,Estado
+
+Reglas:
+- Fecha: DD/MM/AAAA
+- TipoComp: tipo de comprobante (FAC, NC, PAGO, etc. tal como aparece)
+- NroComprobante: el número completo (ej: A-0011-00023164) — es la clave de match
+- Debito: monto positivo si es cargo/factura, vacío si no aplica
+- Credito: monto positivo si es pago/NC, vacío si no aplica
+- Saldo: saldo acumulado si existe
+- Estado: Cumplido/Pendiente/Vencido si existe
+- Formato numérico: punto decimal (1234.56), sin separador de miles
+- Ignorar: encabezados de página, totales, "Saldos Anteriores", líneas en blanco`;
+
+  const userContent = [];
+
+  if (userHint) {
+    userContent.push({ type: 'text', text: `Instrucción adicional del usuario: ${userHint}\n\n` });
+  }
+
+  // Prefer vision for PDFs if text extraction is poor
+  const textLen = provRawText.replace(/\s/g,'').length;
+  const usePdfVision = provFileType === 'pdf' && textLen < 200 && provFileB64;
+
+  if (usePdfVision) {
+    userContent.push({
+      type: 'document',
+      source: { type: 'base64', media_type: 'application/pdf', data: provFileB64 }
+    });
+    userContent.push({ type: 'text', text: 'Extraé los movimientos de este PDF según las instrucciones.' });
+  } else {
+    userContent.push({
+      type: 'text',
+      text: `Archivo del proveedor (${provFileName}):\n\n${provRawText.substring(0, 12000)}`
+    });
+  }
+
+  const resp = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': key,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-calls': 'true'
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 8000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userContent }]
+    })
+  });
+
+  if (!resp.ok) {
+    const e = await resp.json().catch(() => ({}));
+    throw new Error(e.error?.message || 'Error API ' + resp.status);
+  }
+
+  const data = await resp.json();
+  const raw = data.content?.map(b => b.text || '').join('').trim();
+  // Strip any accidental markdown fences
+  return raw.replace(/```[\w]*\n?/g, '').trim();
+}
+
+// ══════════════════════════════════════════════════════════════
+//  CSV PARSER
+// ══════════════════════════════════════════════════════════════
+function parseCSVStrict(text) {
+  if (!text || !text.trim()) return [];
+  const lines = text.trim().split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return [];
+
+  const delim = lines[0].includes('\t') ? '\t' : lines[0].includes(';') ? ';' : ',';
+
+  const parseRow = line => {
+    const res = []; let inQ = false, cur = '';
+    for (const c of line) {
+      if (c === '"' && !inQ) { inQ = true; continue; }
+      if (c === '"' && inQ) { inQ = false; continue; }
+      if (c === delim && !inQ) { res.push(cur.trim()); cur = ''; continue; }
+      cur += c;
+    }
+    res.push(cur.trim());
+    return res;
+  };
+
+  const headers = parseRow(lines[0]);
+  return lines.slice(1).map(l => {
+    const cols = parseRow(l);
+    const obj = {};
+    headers.forEach((h, i) => { obj[h] = (cols[i] || '').trim(); });
+    return obj;
+  }).filter(r => Object.values(r).some(v => v));
+}
+
+// ══════════════════════════════════════════════════════════════
+//  NUMBER & DATE UTILS
+// ══════════════════════════════════════════════════════════════
+function normNum(s) {
+  if (!s || s === '' || s === '-') return null;
+  let str = String(s).trim().replace(/[$\s]/g, '');
+  const lastDot = str.lastIndexOf('.');
+  const lastComma = str.lastIndexOf(',');
+  if (lastDot !== -1 && lastComma !== -1) {
+    str = lastComma > lastDot ? str.replace(/\./g,'').replace(',','.') : str.replace(/,/g,'');
+  } else if (lastComma !== -1) {
+    str = str.replace(',','.');
+  }
+  const n = parseFloat(str);
+  return isNaN(n) ? null : n;
+}
+
+function normComp(s) {
+  return String(s || '').replace(/[^a-zA-Z0-9]/g,'').toUpperCase();
+}
+
+function compSuffix(s) {
+  const n = String(s || '').replace(/[^0-9]/g,'').replace(/^0+/,'');
+  return n.length >= 5 ? n : '';
+}
+
+function fmt(n) {
+  if (n === null || n === undefined) return '—';
+  return n.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function fmtDate(d) {
+  if (!d) return '—';
+  return d.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+// ══════════════════════════════════════════════════════════════
+//  CONCILIATION ENGINE
+// ══════════════════════════════════════════════════════════════
+function conciliar() {
+  // Detect Magnus column names dynamically
+  const mHeaders = magnusData.length ? Object.keys(magnusData[0]) : [];
+  const mFecha   = mHeaders.find(h => /fec.*mov|fecmov/i.test(h.replace(/\s/g,''))) || mHeaders.find(h => /fec/i.test(h)) || '';
+  const mCodComp = mHeaders.find(h => /cód.*comp|cod.*comp/i.test(h)) || '';
+  const mNroComp = mHeaders.find(h => /nº.*comp|n°.*comp|nro.*comp|num.*comp/i.test(h)) || '';
+  const mDebito  = mHeaders.find(h => /^débito$|^debito$/i.test(h.trim())) || mHeaders.find(h => /déb|deb/i.test(h)) || '';
+  const mCredito = mHeaders.find(h => /^crédito$|^credito$/i.test(h.trim())) || mHeaders.find(h => /cré|cre/i.test(h)) || '';
+  const mSaldo   = mHeaders.find(h => /^saldo$/i.test(h.trim())) || '';
+  const mEstado  = mHeaders.find(h => /^estado$/i.test(h.trim())) || '';
+
+  // Provider columns (from Claude output)
+  const pHeaders = provData.length ? Object.keys(provData[0]) : [];
+  const pFecha   = pHeaders.find(h => /fecha/i.test(h)) || pHeaders[0] || '';
+  const pNro     = pHeaders.find(h => /nro|num|comp/i.test(h)) || pHeaders[1] || '';
+  const pDeb     = pHeaders.find(h => /deb/i.test(h)) || '';
+  const pCred    = pHeaders.find(h => /cred/i.test(h)) || '';
+  const pSaldo   = pHeaders.find(h => /saldo/i.test(h)) || '';
+  const pEstado  = pHeaders.find(h => /estado|status/i.test(h)) || '';
+
+  // Build Magnus key: Nº Comprobante is the match key
+  const magnusMap = {};
+  const magnusSufMap = {};
+  magnusData.forEach(r => {
+    const nro = normComp(r[mNroComp]);
+    if (!nro) return;
+    if (!magnusMap[nro]) magnusMap[nro] = [];
+    magnusMap[nro].push(r);
+    const suf = compSuffix(nro);
+    if (suf) { if (!magnusSufMap[suf]) magnusSufMap[suf] = []; magnusSufMap[suf].push(r); }
+  });
+
+  const matchedMagnusKeys = new Set();
+  allRows = [];
+
+  // Process each provider row
+  provData.forEach(rp => {
+    const nroP = normComp(rp[pNro]);
+    const debP = normNum(rp[pDeb]) || 0;
+    const credP = normNum(rp[pCred]) || 0;
+    const importeP = debP !== 0 ? debP : (credP !== 0 ? -credP : 0);
+    const saldoP = normNum(rp[pSaldo]);
+
+    // Skip credits/payments (pagos) — only match facturas/charges
+    const tipoP = String(rp['TipoComp'] || rp['Tipo'] || '').toLowerCase();
+    if (tipoP.includes('pago') || importeP < 0 || importeP === 0) return;
+
+    // Find in Magnus
+    let magnusRows = magnusMap[nroP] || [];
+    if (!magnusRows.length && nroP.length >= 4) {
+      for (const [k, v] of Object.entries(magnusMap)) {
+        if (k.endsWith(nroP) || nroP.endsWith(k) || k.includes(nroP) || nroP.includes(k)) {
+          magnusRows = v; break;
+        }
+      }
+    }
+    if (!magnusRows.length) {
+      const suf = compSuffix(nroP);
+      if (suf && magnusSufMap[suf]) magnusRows = magnusSufMap[suf];
+    }
+
+    if (magnusRows.length) {
+      const mr = magnusRows[0];
+      matchedMagnusKeys.add(normComp(mr[mNroComp]));
+      const debM = normNum(mr[mDebito]) || 0;
+      const credM = normNum(mr[mCredito]) || 0;
+      const importeM = debM !== 0 ? debM : (credM !== 0 ? -credM : 0);
+      const saldoM = normNum(mr[mSaldo]);
+      const diff = importeP - importeM;
+      const isPartial = saldoM !== null && saldoM > 0 && saldoM < importeM - 0.01;
+
+      allRows.push({
+        status: isPartial ? 'partial' : Math.abs(diff) > 0.01 ? 'diff' : 'ok',
+        rMagnus: mr, rProv: rp,
+        nroComp: rp[pNro] || mr[mNroComp],
+        fechaProv: rp[pFecha], fechaMagnus: mr[mFecha],
+        importeP, importeM, saldoM, diff,
+        estadoM: mr[mEstado], estadoP: rp[pEstado],
+        // for export
+        mFecha, mCodComp, mNroComp, mDebito, mCredito, mSaldo, mEstado,
+        pFecha, pNro, pDeb, pCred, pSaldo, pEstado
+      });
+    } else {
+      allRows.push({
+        status: 'only-p',
+        rMagnus: null, rProv: rp,
+        nroComp: rp[pNro],
+        fechaProv: rp[pFecha], fechaMagnus: null,
+        importeP, importeM: null, saldoM: null,
+        diff: null, estadoM: '', estadoP: rp[pEstado],
+        mFecha, mCodComp, mNroComp, mDebito, mCredito, mSaldo, mEstado,
+        pFecha, pNro, pDeb, pCred, pSaldo, pEstado
+      });
+    }
+  });
+
+  // Magnus rows with no match in provider
+  magnusData.forEach(mr => {
+    const nro = normComp(mr[mNroComp]);
+    if (!nro || matchedMagnusKeys.has(nro)) return;
+    const codComp = String(mr[mCodComp] || '').toLowerCase();
+    if (codComp.includes('pago')) return; // skip payments
+    const debM = normNum(mr[mDebito]) || 0;
+    const credM = normNum(mr[mCredito]) || 0;
+    if (debM === 0 && credM !== 0) return; // skip credits
+    const importeM = debM !== 0 ? debM : (credM !== 0 ? -credM : 0);
+    if (importeM <= 0) return;
+
+    allRows.push({
+      status: 'only-c',
+      rMagnus: mr, rProv: null,
+      nroComp: mr[mNroComp],
+      fechaProv: null, fechaMagnus: mr[mFecha],
+      importeP: null, importeM, saldoM: normNum(mr[mSaldo]),
+      diff: null, estadoM: mr[mEstado], estadoP: '',
+      mFecha, mCodComp, mNroComp, mDebito, mCredito, mSaldo, mEstado,
+      pFecha, pNro, pDeb, pCred, pSaldo, pEstado
+    });
+  });
+
+  renderSummary();
+  renderTable();
+  document.getElementById('results-section').classList.remove('results-hidden');
+  document.getElementById('results-section').classList.add('fade');
+  document.getElementById('btn-reset').classList.remove('hidden');
+  setStep(3, 'active');
+  document.getElementById('topbar-sub').textContent = `${allRows.length} movimientos procesados`;
+  setStatus();
+}
+
+// ══════════════════════════════════════════════════════════════
+//  RENDER
+// ══════════════════════════════════════════════════════════════
+function renderSummary() {
+  const ok      = allRows.filter(r => r.status === 'ok').length;
+  const diff    = allRows.filter(r => r.status === 'diff').length;
+  const partial = allRows.filter(r => r.status === 'partial').length;
+  const onlyP   = allRows.filter(r => r.status === 'only-p').length;
+  const onlyC   = allRows.filter(r => r.status === 'only-c').length;
+
+  document.getElementById('summary-row').innerHTML = `
+    <div class="sum-tile ok"><div class="num">${ok}</div><div class="lbl">Coincidentes</div></div>
+    <div class="sum-tile warn"><div class="num">${diff}</div><div class="lbl">Diferencias</div></div>
+    <div class="sum-tile purple"><div class="num">${partial}</div><div class="lbl">Pagos parciales</div></div>
+    <div class="sum-tile info"><div class="num">${onlyP}</div><div class="lbl">Solo en proveedor</div></div>
+    <div class="sum-tile err"><div class="num">${onlyC}</div><div class="lbl">Solo en Magnus</div></div>
+  `;
+
+  document.getElementById('cnt-all').textContent = allRows.length;
+  document.getElementById('cnt-diff').textContent = diff + partial;
+  document.getElementById('cnt-partial').textContent = partial;
+  document.getElementById('cnt-ok').textContent = ok;
+  document.getElementById('cnt-only').textContent = onlyP + onlyC;
+
+  const now = new Date().toLocaleDateString('es-AR');
+  document.getElementById('export-info').textContent = `Conciliado el ${now}`;
+}
+
+function renderTable() {
+  const search = document.getElementById('tbl-search').value.toLowerCase();
+  let rows = allRows;
+
+  // Tab filter
+  if (currentTab === 'diff') rows = rows.filter(r => r.status === 'diff' || r.status === 'partial');
+  else if (currentTab === 'partial') rows = rows.filter(r => r.status === 'partial');
+  else if (currentTab === 'ok') rows = rows.filter(r => r.status === 'ok');
+  else if (currentTab === 'only') rows = rows.filter(r => r.status === 'only-p' || r.status === 'only-c');
+
+  // Search
+  if (search) rows = rows.filter(r => String(r.nroComp).toLowerCase().includes(search));
+
+  // Header
+  document.getElementById('tbl-head').innerHTML = `
+    <th>Estado</th>
+    <th>Comprobante</th>
+    <th>Fecha Prov.</th>
+    <th>Fecha Magnus</th>
+    <th class="num-cell">Importe Prov.</th>
+    <th class="num-cell">Importe Magnus</th>
+    <th class="num-cell">Saldo Magnus</th>
+    <th class="num-cell">Diferencia</th>
+    <th>Est. Magnus</th>
+    <th>Acción</th>
+  `;
+
+  const statusMap = {
+    ok:      { pill: 'pill-ok',     label: '✓ OK' },
+    diff:    { pill: 'pill-warn',   label: '⚠ Diferencia' },
+    partial: { pill: 'pill-purple', label: '⏳ Parcial' },
+    'only-p':{ pill: 'pill-info',   label: '↑ Solo prov.' },
+    'only-c':{ pill: 'pill-err',    label: '↓ Solo Magnus' },
+  };
+  const accionMap = {
+    ok:      'Conforme',
+    diff:    'Verificar diferencia',
+    partial: 'Registrar pago',
+    'only-p':'Revisar en Magnus',
+    'only-c':'Pedir al proveedor',
+  };
+  const rowClass = {
+    ok: 'row-ok', diff: 'row-diff', partial: 'row-partial',
+    'only-p': 'row-onlyp', 'only-c': 'row-onlyc'
+  };
+
+  document.getElementById('tbl-body').innerHTML = rows.map(r => {
+    const s = statusMap[r.status] || { pill: '', label: r.status };
+    const diffCell = r.diff !== null
+      ? `<span class="${r.diff > 0 ? 'diff-pos' : r.diff < 0 ? 'diff-neg' : ''}">${fmt(r.diff)}</span>`
+      : '—';
+    return `<tr class="${rowClass[r.status] || ''}">
+      <td><span class="pill ${s.pill}">${s.label}</span></td>
+      <td class="mono" style="font-size:11px">${r.nroComp || '—'}</td>
+      <td class="mono" style="font-size:11px">${r.fechaProv || '—'}</td>
+      <td class="mono" style="font-size:11px">${r.fechaMagnus || '—'}</td>
+      <td class="num-cell">${fmt(r.importeP)}</td>
+      <td class="num-cell">${fmt(r.importeM)}</td>
+      <td class="num-cell">${fmt(r.saldoM)}</td>
+      <td class="num-cell">${diffCell}</td>
+      <td style="font-size:11px;color:var(--text3)">${r.estadoM || '—'}</td>
+      <td style="font-size:11px;color:var(--text2)">${accionMap[r.status] || '—'}</td>
+    </tr>`;
+  }).join('');
+
+  if (!rows.length) {
+    document.getElementById('tbl-body').innerHTML = `
+      <tr><td colspan="10" style="text-align:center;padding:32px;color:var(--text3);font-family:var(--mono);font-size:12px">
+        Sin resultados para este filtro
+      </td></tr>`;
+  }
+}
+
+function setTab(tab, el) {
+  currentTab = tab;
+  document.querySelectorAll('.tab-pill').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  renderTable();
+}
+
+// ══════════════════════════════════════════════════════════════
+//  EXPORT
+// ══════════════════════════════════════════════════════════════
+function exportExcel() {
+  const statusLabels = { ok:'Coincide', diff:'Diferencia', partial:'Pago parcial', 'only-p':'Solo en proveedor', 'only-c':'Solo en Magnus' };
+  const data = allRows.map(r => ({
+    'Estado': statusLabels[r.status] || r.status,
+    'Comprobante': r.nroComp,
+    'Fecha Proveedor': r.fechaProv || '',
+    'Fecha Magnus': r.fechaMagnus || '',
+    'Importe Proveedor': r.importeP !== null ? r.importeP : '',
+    'Importe Magnus': r.importeM !== null ? r.importeM : '',
+    'Saldo Magnus': r.saldoM !== null ? r.saldoM : '',
+    'Diferencia': r.diff !== null ? r.diff.toFixed(2) : '',
+    'Estado Magnus': r.estadoM || '',
+    'Acción': { ok:'Conforme', diff:'Verificar diferencia', partial:'Registrar pago parcial', 'only-p':'Revisar registro en Magnus', 'only-c':'Solicitar comprobante al proveedor' }[r.status] || ''
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(data);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Conciliación');
+
+  // Summary sheet
+  const ok = allRows.filter(r=>r.status==='ok').length;
+  const sumData = [
+    { Concepto: 'Fecha', Valor: new Date().toLocaleDateString('es-AR') },
+    { Concepto: 'Proveedor', Valor: provFileName },
+    { Concepto: 'Coincidentes', Valor: ok },
+    { Concepto: 'Diferencias', Valor: allRows.filter(r=>r.status==='diff').length },
+    { Concepto: 'Pagos parciales', Valor: allRows.filter(r=>r.status==='partial').length },
+    { Concepto: 'Solo en proveedor', Valor: allRows.filter(r=>r.status==='only-p').length },
+    { Concepto: 'Solo en Magnus', Valor: allRows.filter(r=>r.status==='only-c').length },
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(sumData), 'Resumen');
+
+  const date = new Date().toLocaleDateString('es-AR').replace(/\//g,'-');
+  XLSX.writeFile(wb, `conciliacion_${date}.xlsx`);
+}
+
+// ══════════════════════════════════════════════════════════════
+//  BADGE & UI HELPERS
+// ══════════════════════════════════════════════════════════════
+function showBadge(n, name, icon) {
+  const el = document.getElementById('badge' + n);
+  el.classList.remove('hidden');
+  el.innerHTML = `<span class="dz-badge">${icon} ${name} <button onclick="clearFile(${n})">✕</button></span>`;
+  document.getElementById('dz' + n).classList.add('loaded');
+}
+function clearFile(n) {
+  if (n === 1) { magnusData = []; }
+  else { provRawText = ''; provFileB64 = ''; provData = []; provFileName = ''; }
+  document.getElementById('badge' + n).classList.add('hidden');
+  document.getElementById('dz' + n).classList.remove('loaded');
+  const inp = document.getElementById('dz' + n).querySelector('input[type=file]');
+  if (inp) inp.value = '';
+  checkReady();
+}
+
+function checkReady() {
+  const hasMagnus = magnusData.length > 0;
+  const hasProv   = provRawText.length > 0 || provFileB64.length > 0;
+  const hasKey    = !!getKey();
+  document.getElementById('send-btn').disabled = !(hasMagnus && hasProv && hasKey);
+  if (hasMagnus && !hasProv) document.getElementById('topbar-sub').textContent = 'Magnus cargado — falta el archivo del proveedor';
+  else if (!hasMagnus && hasProv) document.getElementById('topbar-sub').textContent = 'Archivo del proveedor listo — falta el Excel de Magnus';
+  else if (hasMagnus && hasProv) document.getElementById('topbar-sub').textContent = 'Archivos listos — hacé clic en Extraer →';
+}
+
+function setStep(n, state) {
+  for (let i = 1; i <= 3; i++) {
+    const el = document.getElementById('step-' + i);
+    el.classList.remove('active','done');
+    if (i < n) el.classList.add('done');
+    else if (i === n) el.classList.add('active');
+  }
+}
+
+function setStatus() {}
+
+let msgCounter = 0;
+function addMsg(who, html, type = '', returnId = false) {
+  const id = 'msg-' + (++msgCounter);
+  const avatars = { sys: '🤖', user: '👤' };
+  const bubbleCls = type === 'error' ? 'error' : type === 'success' ? 'success' : who;
+  const div = document.createElement('div');
+  div.className = 'msg'; div.id = id;
+  div.innerHTML = `
+    <div class="msg-avatar ${who}">${avatars[who] || '🤖'}</div>
+    <div class="msg-bubble ${bubbleCls}">${html}</div>
+  `;
+  const container = document.getElementById('chat-messages');
+  container.appendChild(div);
+  container.scrollTop = container.scrollHeight;
+  if (returnId) return id;
+}
+function removeMsg(id) { const el = document.getElementById(id); if (el) el.remove(); }
+
+function resetAll() {
+  magnusData = []; provRawText = ''; provFileB64 = ''; provFileName = '';
+  provData = []; allRows = []; currentTab = 'all';
+  ['1','2'].forEach(n => {
+    document.getElementById('badge'+n).classList.add('hidden');
+    document.getElementById('dz'+n).classList.remove('loaded');
+    const inp = document.getElementById('dz'+n).querySelector('input[type=file]');
+    if (inp) inp.value = '';
+  });
+  document.getElementById('results-section').classList.add('results-hidden');
+  document.getElementById('btn-reset').classList.add('hidden');
+  document.getElementById('chat-messages').innerHTML = `
+    <div class="msg">
+      <div class="msg-avatar sys">🤖</div>
+      <div class="msg-bubble sys">Listo para una nueva conciliación. Subí los archivos.</div>
+    </div>`;
+  document.getElementById('topbar-sub').textContent = 'Subí los dos archivos para comenzar';
+  setStep(1, 'active');
+  document.getElementById('send-btn').disabled = true;
+}
+</script>
+</body>
+</html>
